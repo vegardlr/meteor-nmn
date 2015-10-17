@@ -10,9 +10,11 @@ import matplotlib.lines as lines
 import matplotlib.image as mpimg
 from matplotlib.backends.backend_wxagg import Toolbar, FigureCanvasWxAgg
 import numpy
+import urllib
+import os.path
 
 class DraggablePoints(object):
-	def __init__(self, artists, tolerance=400):
+	def __init__(self, artists, tolerance=40):
 		for artist in artists:
 			artist.set_picker(tolerance)
 		self.artists = artists
@@ -48,13 +50,15 @@ class DraggablePoints(object):
 		self.offset = (x0 - x1), (y0 - y1)
 
 	def on_motion(self, event):
-		print "on_motion"
-		if not self.currently_dragging:
-			return
-		if self.current_artist is None:
-			return
+		if not self.currently_dragging: return
+		if self.current_artist is None: return
+		if event.xdata is None or event.ydata is None: return
 		dx, dy = self.offset
-		self.current_artist.center = event.xdata + dx, event.ydata + dy
+		self.current_artist.x = event.xdata + dx
+		self.current_artist.y = event.ydata + dy
+		#self.current_artist.center = event.xdata + dx, event.ydata + dy
+#		print "on_motion offset:%f,%f" % (self.offset)
+#		print self.current_artist.center 
 		self.current_artist.figure.canvas.draw()
 
 
@@ -65,12 +69,12 @@ class Arrow(patches.Arrow):
 	def __init__(self,point,color):
 		#name 'center' used to work with DraggablePOints
 		self.center = point
-		dx,dy = 100,100
-		width = 40
+		dx,dy = 70,70
+		width = 60
 		patches.Arrow.__init__(self,self.center[0]-dx,self.center[1]-dy,
-			dx,dy,color=color,picker=True)
-#                lines.Line2D.__init__(self,self.center[0],self.center[1],
-#                        marker=u'*',linewidth=4,color=color)
+			dx,dy,width=width,color=color)
+#				 lines.Line2D.__init__(self,self.center[0],self.center[1],
+#						 marker=u'*',linewidth=4,color=color)
 
 
 
@@ -99,7 +103,18 @@ class MRTPlot(wx.Panel):
 		self.SetSizer(sizer)
 		self.Fit()
 		
-		self.plot('m_landscape.jpg',(2480,952),(3552,608))
+		#self.plot('m_landscape.jpg',(2480,952),(3552,608))
+
+	def load(self,event):
+		#Display image
+		self.ax.imshow(event.img)
+		#Plot start/end points
+		start_point, end_point = (2480,952),(3552,608)
+		circles = [patches.Circle(start_point, 50, fc='r', alpha=0.5),
+				patches.Circle(end_point, 50, fc='b', alpha=0.5)]
+		for patch in circles:
+			self.ax.add_patch(patch)  
+		self.dr = DraggablePoints(circles)
 
 	def plot(self,filename,start_point,end_point):
 		#Display image
@@ -108,16 +123,24 @@ class MRTPlot(wx.Panel):
 		if shape[0] > shape[1]: img = img[::-1]
 		imgplot = self.ax.imshow(img)
 		
-		#Cirlces
+#		#Cirlces
 		circles = [patches.Circle(start_point, 50, fc='r', alpha=0.5),
 				patches.Circle(end_point, 50, fc='b', alpha=0.5)]
 		for patch in circles:
 			self.ax.add_patch(patch)  
 		self.dr = DraggablePoints(circles)
 
-		#Arrows
+#		#Arrows
 #		arrows = [Arrow(start_point,'red'),Arrow(end_point,'yellow')] 
 #		for patch in arrows:
+#			self.ax.add_patch(patch)  
+#		self.dr = DraggablePoints(arrows)
+
+#		#Arrows v.2
+#		arrows = [patches.Arrow(start_point[0],start_point[1],50,50,width=70,color='red'),
+#				patches.Arrow(end_point[0],end_point[1],50,50,width=70,color='yellow')] 
+#		for patch in arrows:
+#			print patch.xy
 #			self.ax.add_patch(patch)  
 #		self.dr = DraggablePoints(arrows)
 
@@ -128,6 +151,7 @@ class MRTControl(wx.Panel):
 		font = wx.Font(18, wx.DEFAULT, wx.NORMAL, wx.BOLD)
 		title = wx.StaticText(self,-1,label="CONTROLPANEL")
 		title.SetFont(font)
+
 
 
 class MRTFrame(wx.Frame):
@@ -143,6 +167,36 @@ class MRTFrame(wx.Frame):
 		self.SetAutoLayout(True)
 		self.SetSizer(box)
 		self.Layout()
+
+		event = EventData("20151015","223929","harestua","cam3")
+		self.load(event)
+
+	def load(self,event):
+		self.plotpanel.load(event)
+
+
+
+class EventData:
+	def __init__(self,date,time,station,camera):
+		self.date = date
+		self.time = time
+		self.station = station
+		self.camera = camera
+
+		base = "http://norskmeteornettverk.no/meteor"
+		file = station+"-"+date+time+"-gnomonic-labels.jpg"
+		url = base+"/"+date+"/"+time+"/"+station+"/"+camera+"/"+file
+		tmp = date+time+station+camera+".jpg"
+
+		if not os.path.isfile(tmp): urllib.urlretrieve(url,tmp)
+		self.img = mpimg.imread(tmp)
+		shape = numpy.shape(self.img)
+		#if shape[0] > shape[1]: self.img = self.img[::-1]
+
+
+
+
+
 
 if __name__ == '__main__':
 	app = wx.App()
