@@ -184,14 +184,44 @@ class EventData:
 		self.camera = camera
 
 		base = "http://norskmeteornettverk.no/meteor"
-		file = station+"-"+date+time+"-gnomonic-labels.jpg"
-		url = base+"/"+date+"/"+time+"/"+station+"/"+camera+"/"+file
-		tmp = date+time+station+camera+".jpg"
+		imgfile = station+"-"+date+time+"-gnomonic-labels.jpg"
+		imgurl = base+"/"+date+"/"+time+"/"+station+"/"+camera+"/"+imgfile
+		txturl = base+"/"+date+"/"+time+"/"+station+"/"+camera+"/event.txt"
+		imgtmp = date+time+station+camera+".jpg"
+		txttmp = date+time+station+camera+".txt"
 
-		if not os.path.isfile(tmp): urllib.urlretrieve(url,tmp)
-		self.img = mpimg.imread(tmp)
+		if not os.path.isfile(imgtmp): urllib.urlretrieve(imgurl,imgtmp)
+		self.img = mpimg.imread(imgtmp)
 		shape = numpy.shape(self.img)
 		#if shape[0] > shape[1]: self.img = self.img[::-1]
+
+		print "Read event.txt"
+		if not os.path.isfile(txttmp): urllib.urlretrieve(txturl,txttmp)
+		fh = open(txttmp,'r')
+		#event_txt = fh.read()
+		null = fh.readline()
+		frames = fh.readline().split()[2]
+		print frames
+		for i in range(0,8):
+			null = fh.readline()
+		positions = fh.readline().split()[2:]
+		print self.str2coord(positions)
+		timestamps = fh.readline().split()[2:]
+		print timestamps
+		coordinates = fh.readline().split()[2:]
+		print coordinates
+		gnomonic = fh.readline().split()[2:]
+		print gnomonic
+
+	def str2coord(self,string):
+		coordinates = []
+		for item in string:
+			a,b = item.split(',')
+			coordinates.append((float(a),float(b)))
+		return coordinates
+
+
+
 
 
 
