@@ -11,66 +11,90 @@ import matplotlib.image as mpimg
 from matplotlib.backends.backend_wxagg import Toolbar, FigureCanvasWxAgg
 import numpy
 
-class DraggablePoints(object):
-	def __init__(self, artists, tolerance=400):
-		for artist in artists:
-			artist.set_picker(tolerance)
-		self.artists = artists
-		self.currently_dragging = False
-		self.current_artist = None
-		self.offset = (0, 0)
 
-		for canvas in set(artist.figure.canvas for artist in self.artists):
-			canvas.mpl_connect('button_press_event', 
+
+class DraggablePoint:
+	"""
+	Draggable Points as separate class and objects
+
+	http://stackoverflow.com/questions/21654008/matplotlib-drag-overlapping-points-interactively
+	"""
+	lock = None #only one can be animated at a time
+	def __init__(self, point):
+		self.point = point
+		self.canvas = self.point.figure.canvas
+		self.axes = self.point.axes
+		self.press = None
+		self.background = None
+
+	def connect(self):
+		'connect to all the events we need'
+		self.cidpress = self.canvas.mpl_connect('button_press_event', 
 				self.on_press)
-			canvas.mpl_connect('button_release_event', 
+		self.cidrelease = self.canvas.mpl_connect('button_release_event', 
 				self.on_release)
-			canvas.mpl_connect('pick_event', 
-				self.on_pick)
-			canvas.mpl_connect('motion_notify_event', 
+		self.cidmotion = self.canvas.mpl_connect('motion_notify_event', 
 				self.on_motion)
 
 	def on_press(self, event):
-		print "on_press"
-		self.currently_dragging = True
+		if event.inaxes != self.point.axes: return
+		if DraggablePoint.lock is not None: return
+		contains, attrd = self.point.contains(event)
+		if not contains: return
+		self.press = (self.point.center), event.xdata, event.ydata
+		DraggablePoint.lock = self
 
-	def on_release(self, event):
-		print "on_release"
-		self.currently_dragging = False
-		self.current_artist = None
+		# draw everything but the selected rectangle and store the pixel buffer
+		self.point.set_animated(True)
+		self.canvas.draw()
+		self.background = self.canvas.copy_from_bbox(self.axes.bbox)
 
-	def on_pick(self, event):
-		print "on_pick"
-		if self.current_artist is None:
-			self.current_artist = event.artist
-		x0, y0 = event.artist.center
-		x1, y1 = event.mouseevent.xdata, event.mouseevent.ydata
-		self.offset = (x0 - x1), (y0 - y1)
+		# now redraw just the rectangle
+		self.axes.draw_artist(self.point)
+
+		# and blit just the redrawn area
+		self.canvas.blit(self.axes.bbox)
 
 	def on_motion(self, event):
-		print "on_motion"
-		if not self.currently_dragging:
+		if DraggablePoint.lock is not self:
 			return
-		if self.current_artist is None:
+		if event.inaxes != self.point.axes: return
+		self.point.center, xpress, ypress = self.press
+		dx = event.xdata - xpress
+		dy = event.ydata - ypress
+		self.point.center = (self.point.center[0]+dx, self.point.center[1]+dy)
+
+		# restore the background region
+		self.canvas.restore_region(self.background)
+
+		# redraw just the current rectangle
+		self.axes.draw_artist(self.point)
+
+		# blit just the redrawn area
+		self.canvas.blit(self.axes.bbox)
+
+	def on_release(self, event):
+		'on release we reset the press data'
+		if DraggablePoint.lock is not self:
 			return
-		dx, dy = self.offset
-		self.current_artist.center = event.xdata + dx, event.ydata + dy
-		self.current_artist.figure.canvas.draw()
+
+		self.press = None
+		DraggablePoint.lock = None
+
+		# turn off the rect animation property and reset the background
+		self.point.set_animated(False)
+		self.background = None
+
+		# redraw the full figure
+		self.canvas.draw()
+
+	def disconnect(self):
+		'disconnect all the stored connection ids'
+		self.canvas.mpl_disconnect(self.cidpress)
+		self.canvas.mpl_disconnect(self.cidrelease)
+		self.canvas.mpl_disconnect(self.cidmotion)
 
 
-class Arrow(patches.Arrow):
-	"""
-	Custom marker
-	"""
-	def __init__(self,point,color):
-		#name 'center' used to work with DraggablePOints
-		self.center = point
-		dx,dy = 100,100
-		width = 40
-		patches.Arrow.__init__(self,self.center[0]-dx,self.center[1]-dy,
-			dx,dy,color=color,picker=True)
-#                lines.Line2D.__init__(self,self.center[0],self.center[1],
-#                        marker=u'*',linewidth=4,color=color)
 
 
 
@@ -90,11 +114,8 @@ class MRTPlot(wx.Panel):
 		self.toolbar = Toolbar(self.canvas) #matplotlib toolbar
 		self.toolbar.Realize()
 
-		# Now put all into a sizer
 		sizer = wx.BoxSizer(wx.VERTICAL)
-		# This way of adding to sizer allows resizing
 		sizer.Add(self.canvas, 1, wx.LEFT|wx.TOP|wx.GROW)
-		# Best to allow the toolbar to resize!
 		sizer.Add(self.toolbar, 0, wx.GROW)
 		self.SetSizer(sizer)
 		self.Fit()
@@ -111,21 +132,25 @@ class MRTPlot(wx.Panel):
 		#Cirlces
 		circles = [patches.Circle(start_point, 50, fc='r', alpha=0.5),
 				patches.Circle(end_point, 50, fc='b', alpha=0.5)]
-		for patch in circles:
-			self.ax.add_patch(patch)  
-		self.dr = DraggablePoints(circles)
-
-		#Arrows
-#		arrows = [Arrow(start_point,'red'),Arrow(end_point,'yellow')] 
-#		for patch in arrows:
+#		for patch in circles:
 #			self.ax.add_patch(patch)  
-#		self.dr = DraggablePoints(arrows)
+#		self.dr = DraggablePoints(circles)
+
+		self.drags = []
+#		circles = [patches.Circle((0.32, 0.3), 0.03, fc='r', alpha=0.5),
+#					   patches.Circle((0.3,0.3), 0.03, fc='g', alpha=0.5)]
+
+		for circ in circles:
+			self.ax.add_patch(circ)
+			dr = DraggablePoint(circ)
+			dr.connect()
+			self.drags.append(dr)
 
 
 class MRTControl(wx.Panel):
 	def __init__(self, parent):
 		wx.Panel.__init__(self, parent, -1)
-		font = wx.Font(18, wx.DEFAULT, wx.NORMAL, wx.BOLD)
+		font = wx.Font(12, wx.DEFAULT, wx.NORMAL, wx.BOLD)
 		title = wx.StaticText(self,-1,label="CONTROLPANEL")
 		title.SetFont(font)
 
