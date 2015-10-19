@@ -11,7 +11,10 @@ import matplotlib.image as mpimg
 from matplotlib.backends.backend_wxagg import Toolbar, FigureCanvasWxAgg
 import numpy
 import urllib
-import os.path
+import os, os.path
+import errno
+import colorsys
+
 
 class DraggablePoints(object):
 	def __init__(self, artists, tolerance=40):
@@ -106,43 +109,27 @@ class MRTPlot(wx.Panel):
 		#self.plot('m_landscape.jpg',(2480,952),(3552,608))
 
 	def load(self,event):
+
 		#Display image
 		self.ax.imshow(event.img)
+
 		#Plot start/end points
-		start_point, end_point = (2480,952),(3552,608)
-		circles = [patches.Circle(start_point, 50, fc='r', alpha=0.5),
-				patches.Circle(end_point, 50, fc='b', alpha=0.5)]
-		for patch in circles:
-			self.ax.add_patch(patch)  
-		self.dr = DraggablePoints(circles)
+		circles = []
+		colors = self.color_range(event.frames)
+		for pos,col in zip(event.positions, colors):
+			circle = patches.Circle(pos, 50, fc=col, alpha=0.5)
+			circles.append(circle)
+			self.ax.add_patch(circle)  
+		self.drag = DraggablePoints(circles)
 
-	def plot(self,filename,start_point,end_point):
-		#Display image
-		img = mpimg.imread(filename) 
-		shape = numpy.shape(img)
-		if shape[0] > shape[1]: img = img[::-1]
-		imgplot = self.ax.imshow(img)
-		
-#		#Cirlces
-		circles = [patches.Circle(start_point, 50, fc='r', alpha=0.5),
-				patches.Circle(end_point, 50, fc='b', alpha=0.5)]
-		for patch in circles:
-			self.ax.add_patch(patch)  
-		self.dr = DraggablePoints(circles)
-
-#		#Arrows
-#		arrows = [Arrow(start_point,'red'),Arrow(end_point,'yellow')] 
-#		for patch in arrows:
-#			self.ax.add_patch(patch)  
-#		self.dr = DraggablePoints(arrows)
-
-#		#Arrows v.2
-#		arrows = [patches.Arrow(start_point[0],start_point[1],50,50,width=70,color='red'),
-#				patches.Arrow(end_point[0],end_point[1],50,50,width=70,color='yellow')] 
-#		for patch in arrows:
-#			print patch.xy
-#			self.ax.add_patch(patch)  
-#		self.dr = DraggablePoints(arrows)
+	def color_range(self,num_colors):
+		colors=[]
+		for i in numpy.arange(0., 360., 360. / num_colors):
+			hue = i/360.
+			lightness = (50 + numpy.random.rand() * 10)/100.
+			saturation = (90 + numpy.random.rand()* 10)/100.
+			colors.append(colorsys.hls_to_rgb(hue, lightness, saturation))
+		return colors
 
 
 class MRTControl(wx.Panel):
@@ -168,9 +155,6 @@ class MRTFrame(wx.Frame):
 		self.SetSizer(box)
 		self.Layout()
 
-		event = EventData("20151015","223929","harestua","cam3")
-		self.load(event)
-
 	def load(self,event):
 		self.plotpanel.load(event)
 
@@ -184,42 +168,53 @@ class EventData:
 		self.camera = camera
 
 		base = "http://norskmeteornettverk.no/meteor"
+		cache = "./cache"
+		self.create_path(cache)
+
+		#Read image
 		imgfile = station+"-"+date+time+"-gnomonic-labels.jpg"
 		imgurl = base+"/"+date+"/"+time+"/"+station+"/"+camera+"/"+imgfile
-		txturl = base+"/"+date+"/"+time+"/"+station+"/"+camera+"/event.txt"
-		imgtmp = date+time+station+camera+".jpg"
-		txttmp = date+time+station+camera+".txt"
-
+		imgtmp = cache+"/"+date+time+station+camera+".jpg"
 		if not os.path.isfile(imgtmp): urllib.urlretrieve(imgurl,imgtmp)
 		self.img = mpimg.imread(imgtmp)
 		shape = numpy.shape(self.img)
 		#if shape[0] > shape[1]: self.img = self.img[::-1]
 
-		print "Read event.txt"
-		if not os.path.isfile(txttmp): urllib.urlretrieve(txturl,txttmp)
+		#Read event data
+		txturl = base+"/"+date+"/"+time+"/"+station+"/"+camera+"/event.txt"
+		txttmp = cache+"/"+date+time+station+camera+".txt"
+		if not os.path.isfile(txttmp): 
+			urllib.urlretrieve(txturl,txttmp)
 		fh = open(txttmp,'r')
-		#event_txt = fh.read()
 		null = fh.readline()
-		frames = fh.readline().split()[2]
-		print frames
+		self.frames		 = int(fh.readline().split()[2])
 		for i in range(0,8):
 			null = fh.readline()
-		positions = fh.readline().split()[2:]
-		print self.str2coord(positions)
-		timestamps = fh.readline().split()[2:]
-		print timestamps
-		coordinates = fh.readline().split()[2:]
-		print coordinates
-		gnomonic = fh.readline().split()[2:]
-		print gnomonic
+		self.positions	 = self.str2tuple(fh.readline().split()[2:])
+		self.timestamps	 = self.str2float(fh.readline().split()[2:])
+		self.coordinates = self.str2tuple(fh.readline().split()[2:])
+		self.gnomonic	 = self.str2tuple(fh.readline().split()[2:])
+		fh.close()
 
-	def str2coord(self,string):
-		coordinates = []
-		for item in string:
+	def str2tuple(self,string_list):
+		tuples = []
+		for item in string_list:
 			a,b = item.split(',')
-			coordinates.append((float(a),float(b)))
-		return coordinates
+			tuples.append((float(a),float(b)))
+		return tuples
 
+	def str2float(self,string_list):
+		floats = []
+		for item in string_list:
+			floats.append(float(item))
+		return floats
+
+	def create_path(self,path):
+		try:
+			os.makedirs(path)
+		except OSError as exception:
+			if exception.errno != errno.EEXIST:
+				raise
 
 
 
@@ -231,6 +226,8 @@ class EventData:
 if __name__ == '__main__':
 	app = wx.App()
 	frame = MRTFrame()
+	event = EventData("20151015","223929","harestua","cam3")
+	frame.load(event)
 	frame.Show()
 	app.MainLoop()
 
