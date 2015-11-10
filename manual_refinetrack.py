@@ -93,7 +93,7 @@ class DraggablePoint:
 		self.canvas.draw()
 
 		# update widget controls
-		self.controls.update(event.xdata,event.ydata)
+		self.controls.update([event.xdata,event.ydata])
 
 	def disconnect(self):
 		'disconnect all the stored connection ids'
@@ -104,6 +104,7 @@ class DraggablePoint:
 
 class DraggablePointControl(wx.Panel):
 	def __init__(self,parent,point,label,color):
+		wx.Panel.__init__(self, parent, -1)
 
 		self.label = wx.StaticText(parent, label=label+":")
 		self.xcoord = wx.TextCtrl(parent)
@@ -115,36 +116,40 @@ class DraggablePointControl(wx.Panel):
 		hbox.Add(wx.StaticText(parent,label=" , "))
 		hbox.Add(self.ycoord)
 
-		self.update(point[0],point[1])
-		
-	def update(self,x,y):
-		self.xcoord.SetValue("%f" % x)
-		self.ycoord.SetValue("%f" % y)
+		self.SetSizer(hbox)
 
+		self.update(point)
+		
+	def update(self,xy):
+		self.xcoord.SetValue("%f" % xy[0])
+		self.ycoord.SetValue("%f" % xy[1])
 
 
 class MRTControl(wx.Panel):
 	def __init__(self, parent):
 		wx.Panel.__init__(self, parent, -1)
-		
 		self.parent = parent
-
-		self.vbox = wx.BoxSizer(wx.VERTICAL)
-		font = wx.Font(12, wx.DEFAULT, wx.NORMAL, wx.BOLD)
-		title = wx.StaticText(self,-1,label="CONTROLPANEL")
-		title.SetFont(font)
-		self.vbox.Add(title)
 		self.controllers = []
 
-	def add(self,point,label,color):
-		controller = DraggablePointControl(self,point,label,color)
-		self.controllers.append(controller)
-		self.vbox.Add(controller)
+	def new(self,point,label,color):
+		print "MRTControl: Add control box "
+		print point, label, color
+		self.controllers.append(DraggablePointControl(self,point,label,color))
 		return self.controllers[-1]
 
 	def show(self):
+		print "MRTControl.show()",len(self.controllers)
+		vbox = wx.BoxSizer(wx.VERTICAL)
+		font = wx.Font(12, wx.DEFAULT, wx.NORMAL, wx.BOLD)
+		title = wx.StaticText(self,-1,label="CONTROLPANEL")
+		title.SetFont(font)
+		vbox.Add(title, 1, wx.EXPAND|wx.TOP|wx.LEFT)
+		for controller in self.controllers:
+			vbox.Add(controller,1,wx.EXPAND|wx.TOP|wx.LEFT)
+		#vbox.AddMany(self.controllers)
+
 		self.SetAutoLayout(True)
-		self.SetSizer(self.vbox)
+		self.SetSizer(vbox)
 		self.Layout()
 	
 
@@ -173,42 +178,46 @@ class MRTPlot(wx.Panel):
 		self.SetSizer(sizer)
 		self.Fit()
 		
-		self.plot('m_landscape.jpg',(2480,952),(3552,608))
+		#self.plot('m_landscape.jpg',(2480,952),(3552,608))
 
-	def plot(self,filename,start_point,end_point):
-		#Display image
-		img = mpimg.imread(filename) 
-		shape = numpy.shape(img)
-		if shape[0] > shape[1]: img = img[::-1]
-		imgplot = self.ax.imshow(img)
-		
-		#Cirlces
-		circles = [patches.Circle(start_point, 50, fc='r', alpha=0.5),
-				patches.Circle(end_point, 50, fc='b', alpha=0.5)]
-		self.drags = []
-		for circ in circles:
-			self.ax.add_patch(circ)
-			dr = DraggablePoint(circ)
-			ctr = self.parent.controlpanel.add(start_point,'Start','r')
-			dr.connect(ctr)
-			self.drags.append(dr)
+#	def plot(self,filename,start_point,end_point):
+#		#Display image
+#		img = mpimg.imread(filename) 
+#		shape = numpy.shape(img)
+#		if shape[0] > shape[1]: img = img[::-1]
+#		imgplot = self.ax.imshow(img)
+#		
+#		#Cirlces
+#		circles = [patches.Circle(start_point, 50, fc='r', alpha=0.5),
+#				patches.Circle(end_point, 50, fc='b', alpha=0.5)]
+#		self.drags = []
+#		for circ in circles:
+#			self.ax.add_patch(circ)
+#			dr = DraggablePoint(circ)
+#			ctr = self.parent.controlpanel.add(start_point,'Start','r')
+#			dr.connect(ctr)
+#			self.drags.append(dr)
+#
+#		self.parent.controlpanel.show()
 
 
 	def load(self,event):
-
-		return
 
 		#Display image
 		self.ax.imshow(event.img)
 
 		#Plot start/end points
-		circles = []
+		self.drags = []
 		colors = self.color_range(event.frames)
 		for pos,col in zip(event.positions, colors):
 			circle = patches.Circle(pos, 50, fc=col, alpha=0.5)
-			circles.append(circle)
 			self.ax.add_patch(circle)  
-		#self.drag = DraggablePoints(circles)
+			dr = DraggablePoint(circle)
+			ctr = self.parent.controlpanel.new(pos,'Label',col)
+			dr.connect(ctr)
+			self.drags.append(dr)
+
+		self.parent.controlpanel.show()
 
 	def color_range(self,num_colors):
 		colors=[]
@@ -234,7 +243,8 @@ class MRTFrame(wx.Frame):
 		self.SetSizer(box)
 		self.Layout()
 
-	def load(self,event):
+		#Test load event - add feature where events are selected
+		event = EventData("20151015","223929","harestua","cam3")
 		self.plotpanel.load(event)
 
 
@@ -305,8 +315,6 @@ class EventData:
 if __name__ == '__main__':
 	app = wx.App()
 	frame = MRTFrame()
-	event = EventData("20151015","223929","harestua","cam3")
-	frame.load(event)
 	frame.Show()
 	app.MainLoop()
 
