@@ -79,8 +79,7 @@ class DraggablePoint:
 
 	def on_release(self, event):
 		'on release we reset the press data'
-		if DraggablePoint.lock is not self:
-			return
+		if DraggablePoint.lock is not self: return
 
 		self.press = None
 		DraggablePoint.lock = None
@@ -123,6 +122,28 @@ class DraggablePointControl(wx.Panel):
 	def update(self,xy):
 		self.xcoord.SetValue("%f" % xy[0])
 		self.ycoord.SetValue("%f" % xy[1])
+#
+#
+#class DraggablePointControl(wx.BoxSizer):
+#	def __init__(self,parent,point,label,color):
+#		wx.BoxSizer.__init__(self, wx.HORIZONTAL)
+#
+#		self.label = wx.StaticText(parent, label=label+":")
+#		self.xcoord = wx.TextCtrl(parent)
+#		self.ycoord = wx.TextCtrl(parent)
+#		
+#		#hbox = wx.BoxSizer(wx.HORIZONTAL)
+#		self.Add(self.label)
+#		self.Add(self.xcoord)
+#		self.Add(wx.StaticText(parent,label=" , "))
+#		self.Add(self.ycoord)
+#		parent.SetSizer(self)
+#
+#		self.update(point)
+#		
+#	def update(self,xy):
+#		self.xcoord.SetValue("%f" % xy[0])
+#		self.ycoord.SetValue("%f" % xy[1])
 
 
 class MRTControl(wx.Panel):
@@ -143,10 +164,11 @@ class MRTControl(wx.Panel):
 		font = wx.Font(12, wx.DEFAULT, wx.NORMAL, wx.BOLD)
 		title = wx.StaticText(self,-1,label="CONTROLPANEL")
 		title.SetFont(font)
-		vbox.Add(title, 1, wx.EXPAND|wx.TOP|wx.LEFT)
-		for controller in self.controllers:
-			vbox.Add(controller,1,wx.EXPAND|wx.TOP|wx.LEFT)
+		vbox.Add(title)
 		#vbox.AddMany(self.controllers)
+		for ctrl in self.controllers:
+			vbox.Add(ctrl)
+			vbox.AddSpacer(50)
 
 		self.SetAutoLayout(True)
 		self.SetSizer(vbox)
