@@ -102,18 +102,21 @@ class DraggablePoint:
 
 
 class DraggablePointControl(wx.Panel):
-	def __init__(self,parent,point,label,color):
-		wx.Panel.__init__(self, parent, -1)
+	def __init__(self, parent, point, label,color):
+		wx.Panel.__init__(self, parent)
 
-		self.label = wx.StaticText(parent, label=label+":")
-		self.xcoord = wx.TextCtrl(parent)
-		self.ycoord = wx.TextCtrl(parent)
+		self.label = wx.StaticText(self, label=label+":")
+		self.xcoord = wx.TextCtrl(self)
+		self.ycoord = wx.TextCtrl(self)
+		self.button = wx.Button(self,label="Move point")
+		self.button.Bind(wx.EVT_BUTTON,self.move_point)
 		
 		hbox = wx.BoxSizer(wx.HORIZONTAL)
 		hbox.Add(self.label)
 		hbox.Add(self.xcoord)
 		hbox.Add(wx.StaticText(parent,label=" , "))
 		hbox.Add(self.ycoord)
+		hbox.Add(self.button)
 
 		self.SetSizer(hbox)
 
@@ -122,28 +125,9 @@ class DraggablePointControl(wx.Panel):
 	def update(self,xy):
 		self.xcoord.SetValue("%f" % xy[0])
 		self.ycoord.SetValue("%f" % xy[1])
-#
-#
-#class DraggablePointControl(wx.BoxSizer):
-#	def __init__(self,parent,point,label,color):
-#		wx.BoxSizer.__init__(self, wx.HORIZONTAL)
-#
-#		self.label = wx.StaticText(parent, label=label+":")
-#		self.xcoord = wx.TextCtrl(parent)
-#		self.ycoord = wx.TextCtrl(parent)
-#		
-#		#hbox = wx.BoxSizer(wx.HORIZONTAL)
-#		self.Add(self.label)
-#		self.Add(self.xcoord)
-#		self.Add(wx.StaticText(parent,label=" , "))
-#		self.Add(self.ycoord)
-#		parent.SetSizer(self)
-#
-#		self.update(point)
-#		
-#	def update(self,xy):
-#		self.xcoord.SetValue("%f" % xy[0])
-#		self.ycoord.SetValue("%f" % xy[1])
+
+	def move_point(self,event):
+		print "Move",self.xcoord.GetValue(),self.ycoord.GetValue()
 
 
 class MRTControl(wx.Panel):
@@ -153,22 +137,19 @@ class MRTControl(wx.Panel):
 		self.controllers = []
 
 	def new(self,point,label,color):
-		print "MRTControl: Add control box "
-		print point, label, color
+#		print "MRTControl: Add control box "
+#		print point, label, color
 		self.controllers.append(DraggablePointControl(self,point,label,color))
 		return self.controllers[-1]
 
 	def show(self):
-		print "MRTControl.show()",len(self.controllers)
+		#print "MRTControl.show()",len(self.controllers)
 		vbox = wx.BoxSizer(wx.VERTICAL)
 		font = wx.Font(12, wx.DEFAULT, wx.NORMAL, wx.BOLD)
 		title = wx.StaticText(self,-1,label="CONTROLPANEL")
 		title.SetFont(font)
 		vbox.Add(title)
-		#vbox.AddMany(self.controllers)
-		for ctrl in self.controllers:
-			vbox.Add(ctrl)
-			vbox.AddSpacer(50)
+		vbox.AddMany(self.controllers)
 
 		self.SetAutoLayout(True)
 		self.SetSizer(vbox)
@@ -200,31 +181,7 @@ class MRTPlot(wx.Panel):
 		self.SetSizer(sizer)
 		self.Fit()
 		
-		#self.plot('m_landscape.jpg',(2480,952),(3552,608))
-
-#	def plot(self,filename,start_point,end_point):
-#		#Display image
-#		img = mpimg.imread(filename) 
-#		shape = numpy.shape(img)
-#		if shape[0] > shape[1]: img = img[::-1]
-#		imgplot = self.ax.imshow(img)
-#		
-#		#Cirlces
-#		circles = [patches.Circle(start_point, 50, fc='r', alpha=0.5),
-#				patches.Circle(end_point, 50, fc='b', alpha=0.5)]
-#		self.drags = []
-#		for circ in circles:
-#			self.ax.add_patch(circ)
-#			dr = DraggablePoint(circ)
-#			ctr = self.parent.controlpanel.add(start_point,'Start','r')
-#			dr.connect(ctr)
-#			self.drags.append(dr)
-#
-#		self.parent.controlpanel.show()
-
-
 	def load(self,event):
-
 		#Display image
 		self.ax.imshow(event.img)
 
@@ -253,7 +210,8 @@ class MRTPlot(wx.Panel):
 
 class MRTFrame(wx.Frame):
 	def __init__(self):
-		wx.Frame.__init__(self,None,title="Manual Refine Track")
+		wx.Frame.__init__(self,None,title="Manual Refine Track",
+				size=wx.Size(1200,800))
 		self.controlpanel = MRTControl(self)
 		self.plotpanel = MRTPlot(self)
 
