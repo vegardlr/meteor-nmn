@@ -137,10 +137,13 @@ class DraggablePointControl(wx.Panel):
 	def update(self,xy):
 		self.xcoord.SetValue("%f" % xy[0])
 		self.ycoord.SetValue("%f" % xy[1])
+	
+	def getcoords(self):
+		return [float(self.xcoord.GetValue()),float(self.ycoord.GetValue())]
 
 	def move_marker(self,event):
-		print "Move",self.xcoord.GetValue(),self.ycoord.GetValue()
-		self.marker.move([self.xcoord.GetValue(),self.ycoord.GetValue()])
+		print "Move",self.getcoords()
+		self.marker.move(self.getcoords())
 
 
 class MRTControl(wx.Panel):
@@ -163,10 +166,51 @@ class MRTControl(wx.Panel):
 		title.SetFont(font)
 		vbox.Add(title)
 		vbox.AddMany(self.controllers)
+		#vbox.AddSpacer(self)
+
+		self.lineparams = wx.StaticText(self,label="a=, b= ")
+		vbox.Add(self.lineparams)
+		button_linreg = wx.Button(self,label="Fit line")
+		button_linreg.Bind(wx.EVT_BUTTON,self.linreg)
+		vbox.Add(button_linreg)
+
+		button_snap = wx.Button(self,label="Snap points")
+		button_snap.Bind(wx.EVT_BUTTON,self.snap_points)
+		vbox.Add(button_snap)
 
 		self.SetAutoLayout(True)
 		self.SetSizer(vbox)
 		self.Layout()
+
+	def linreg(self,event):
+		x = []
+		y = []
+		for ctrl in self.controllers:
+			xy = ctrl.getcoords()
+			x.append(xy[0])
+			y.append(xy[1])
+
+		#Rewrite y=ax+b to y=Ap, where A = [x 1] and p=[[a],[b]]
+		A = numpy.vstack([x, numpy.ones(len(x))]).T
+		a,b = numpy.linalg.lstsq(A,y)[0]
+		self.xlin = x
+		self.ylin = numpy.array(x)*a + b
+		self.lineparams.SetLabel("a=%f, b=%f " % (a,b))
+
+		self.parent.plotpanel.plot_linreg(self.xlin,self.ylin)
+	
+	def snap_points(self,event):
+		if not len(self.ylin) == len(self.controllers):
+			print "Unequal length"
+			return
+
+		for x,y,ctrl in zip(self.xlin,self.ylin,self.controllers):
+			ctrl.update([x,y])
+			ctrl.move_marker(None)
+
+		
+
+
 	
 
 
@@ -188,6 +232,8 @@ class MRTPlot(wx.Panel):
 		self.toolbar = Toolbar(self.canvas) #matplotlib toolbar
 		self.toolbar.Realize()
 
+		self.line = []
+
 		sizer = wx.BoxSizer(wx.VERTICAL)
 		sizer.Add(self.canvas, 1, wx.LEFT|wx.TOP|wx.GROW)
 		sizer.Add(self.toolbar, 0, wx.GROW)
@@ -202,7 +248,7 @@ class MRTPlot(wx.Panel):
 		self.drags = []
 		colors = self.color_range(event.frames)
 		for pos, time, col in zip(event.positions, event.timestamps, colors):
-			circle = patches.Circle(pos, 50, fc=col, alpha=0.5)
+			circle = patches.Circle(pos, 10, fc=col, alpha=0.2)
 			self.ax.add_patch(circle)  
 			dr = DraggablePoint(circle)
 			time = datetime.utcfromtimestamp(time).strftime("t=%H:%M:%S.%f")
@@ -220,6 +266,16 @@ class MRTPlot(wx.Panel):
 			saturation = (90 + numpy.random.rand()* 10)/100.
 			colors.append(colorsys.hls_to_rgb(hue, lightness, saturation))
 		return colors
+
+	def plot_linreg(self,x,y):
+
+		if len(self.line) > 0:
+			self.line.pop(0).remove()
+		self.line = self.ax.plot(x,y,'r')
+		self.canvas.draw()
+
+
+
 
 
 class MRTFrame(wx.Frame):
