@@ -14,6 +14,7 @@ import urllib
 import os, os.path
 import errno
 import colorsys
+from datetime import datetime
 
 
 class DraggablePoint:
@@ -39,6 +40,7 @@ class DraggablePoint:
 		self.cidmotion = self.canvas.mpl_connect('motion_notify_event', 
 				self.on_motion)
 		self.controls = controls
+		self.controls.connect(self)
 
 	def on_press(self, event):
 		if event.inaxes != self.point.axes: return
@@ -93,6 +95,13 @@ class DraggablePoint:
 
 		# update widget controls
 		self.controls.update([event.xdata,event.ydata])
+	
+	def move(self,pos):
+		self.point.center = pos
+		self.axes.draw_artist(self.point)
+		self.canvas.blit(self.axes.bbox)
+		self.canvas.draw()
+
 
 	def disconnect(self):
 		'disconnect all the stored connection ids'
@@ -103,16 +112,16 @@ class DraggablePoint:
 
 class DraggablePointControl(wx.Panel):
 	def __init__(self, parent, point, label,color):
-		wx.Panel.__init__(self, parent)
+		wx.Panel.__init__(self, parent,style=wx.SUNKEN_BORDER)
 
 		self.label = wx.StaticText(self, label=label+":")
 		self.xcoord = wx.TextCtrl(self)
 		self.ycoord = wx.TextCtrl(self)
 		self.button = wx.Button(self,label="Move point")
-		self.button.Bind(wx.EVT_BUTTON,self.move_point)
+		self.button.Bind(wx.EVT_BUTTON,self.move_marker)
 		
 		hbox = wx.BoxSizer(wx.HORIZONTAL)
-		hbox.Add(self.label)
+		hbox.Add(self.label,1,wx.LEFT|wx.CENTER)
 		hbox.Add(self.xcoord)
 		hbox.Add(wx.StaticText(parent,label=" , "))
 		hbox.Add(self.ycoord)
@@ -122,12 +131,16 @@ class DraggablePointControl(wx.Panel):
 
 		self.update(point)
 		
+	def connect(self,marker):
+		self.marker = marker
+	
 	def update(self,xy):
 		self.xcoord.SetValue("%f" % xy[0])
 		self.ycoord.SetValue("%f" % xy[1])
 
-	def move_point(self,event):
+	def move_marker(self,event):
 		print "Move",self.xcoord.GetValue(),self.ycoord.GetValue()
+		self.marker.move([self.xcoord.GetValue(),self.ycoord.GetValue()])
 
 
 class MRTControl(wx.Panel):
@@ -188,11 +201,12 @@ class MRTPlot(wx.Panel):
 		#Plot start/end points
 		self.drags = []
 		colors = self.color_range(event.frames)
-		for pos,col in zip(event.positions, colors):
+		for pos, time, col in zip(event.positions, event.timestamps, colors):
 			circle = patches.Circle(pos, 50, fc=col, alpha=0.5)
 			self.ax.add_patch(circle)  
 			dr = DraggablePoint(circle)
-			ctr = self.parent.controlpanel.new(pos,'Label',col)
+			time = datetime.utcfromtimestamp(time).strftime("t=%H:%M:%S.%f")
+			ctr = self.parent.controlpanel.new(pos,str(time),col)
 			dr.connect(ctr)
 			self.drags.append(dr)
 
