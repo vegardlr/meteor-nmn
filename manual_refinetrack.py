@@ -199,35 +199,31 @@ class MRTControl(wx.Panel):
 		self.lineparams.SetLabel("a=%f, b=%f " % (self.a,self.b))
 
 		self.parent.plotpanel.plot_linreg(self.xlin,self.ylin)
-
-	def get_angle(self, p0, p1=numpy.array([0,0]), p2=None):
-		''' compute angle (in degrees) for p0p1p2 corner
-		Inumpyuts:
-			p0,p1,p2 - points in the form of [x,y]
-		'''
-		if p2 is None:
-			p2 = p1 + numpy.array([1, 0])
-		v0 = numpy.array(p0) - numpy.array(p1)
-		v1 = numpy.array(p2) - numpy.array(p1)
-
-		angle = numpy.math.atan2(numpy.linalg.det([v0,v1]),numpy.dot(v0,v1))
-		return numpy.degrees(angle)
 	
 	def snap_points(self,event):
 		if not len(self.ylin) == len(self.controllers):
 			print "Unequal length"
 			return
 
+		p0 = numpy.array([self.xlin[0],self.ylin[0]])
+		p1 = numpy.array([self.xlin[-1],self.ylin[-1]])
+		v1 = p1 - p0
+		v1_unit = v1/numpy.linalg.norm(v1)
+
 		for x,y,ctrl in zip(self.xlin,self.ylin,self.controllers):
+			p = numpy.array([x,y])
+			r = numpy.vdot(p-p0,v1_unit)
+			p_nearest = r*v1_unit + p0
+			print "Delta",p_nearest-p
+			print "POints",p_nearest,p,p0
+			if numpy.linalg.norm(p-p0) > 0:
+				#self.parent.plotpanel.ax.plot([p[0],p_nearest[0]],[p[1],p_nearest[1]],'g')
+				self.parent.plotpanel.ax.plot(p_nearest,'g',marker='x')
+				self.parent.plotpanel.ax.plot(p,'g',marker='s')
+				self.parent.plotpanel.canvas.draw()
+				tja = input("Continue?")
 
-			x0,y0 = self.xlin[0],self.ylin[0]
-			x1,y1 = self.xlin[-1],self.ylin[-1]
-			print self.get_angle([x,y],[x0,y0],[x1,y1])
-
-#			start = [self.xlin[0],self.ylin[0]]
-#			end = [self.xlin[-1],self.ylin[-1]]
-#			print pnt2line(self.getcoords(),start,end)
-			ctrl.update([x,y])
+			ctrl.update(p_nearest)
 			ctrl.move_marker(None)
 
 		
