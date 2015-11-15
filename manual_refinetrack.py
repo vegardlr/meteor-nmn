@@ -15,6 +15,7 @@ import os, os.path
 import errno
 import colorsys
 from datetime import datetime
+#import distance
 
 
 class DraggablePoint:
@@ -192,12 +193,25 @@ class MRTControl(wx.Panel):
 
 		#Rewrite y=ax+b to y=Ap, where A = [x 1] and p=[[a],[b]]
 		A = numpy.vstack([x, numpy.ones(len(x))]).T
-		a,b = numpy.linalg.lstsq(A,y)[0]
+		self.a,self.b = numpy.linalg.lstsq(A,y)[0]
 		self.xlin = x
-		self.ylin = numpy.array(x)*a + b
-		self.lineparams.SetLabel("a=%f, b=%f " % (a,b))
+		self.ylin = numpy.array(x)*self.a + self.b
+		self.lineparams.SetLabel("a=%f, b=%f " % (self.a,self.b))
 
 		self.parent.plotpanel.plot_linreg(self.xlin,self.ylin)
+
+	def get_angle(self, p0, p1=numpy.array([0,0]), p2=None):
+		''' compute angle (in degrees) for p0p1p2 corner
+		Inumpyuts:
+			p0,p1,p2 - points in the form of [x,y]
+		'''
+		if p2 is None:
+			p2 = p1 + numpy.array([1, 0])
+		v0 = numpy.array(p0) - numpy.array(p1)
+		v1 = numpy.array(p2) - numpy.array(p1)
+
+		angle = numpy.math.atan2(numpy.linalg.det([v0,v1]),numpy.dot(v0,v1))
+		return numpy.degrees(angle)
 	
 	def snap_points(self,event):
 		if not len(self.ylin) == len(self.controllers):
@@ -205,6 +219,14 @@ class MRTControl(wx.Panel):
 			return
 
 		for x,y,ctrl in zip(self.xlin,self.ylin,self.controllers):
+
+			x0,y0 = self.xlin[0],self.ylin[0]
+			x1,y1 = self.xlin[-1],self.ylin[-1]
+			print self.get_angle([x,y],[x0,y0],[x1,y1])
+
+#			start = [self.xlin[0],self.ylin[0]]
+#			end = [self.xlin[-1],self.ylin[-1]]
+#			print pnt2line(self.getcoords(),start,end)
 			ctrl.update([x,y])
 			ctrl.move_marker(None)
 
