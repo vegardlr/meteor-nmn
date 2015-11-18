@@ -33,6 +33,9 @@ class DraggablePoint:
 		self.background = None
 
 	def connect(self, controls):
+		'connect controls to marker (draggable point)'
+		self.controls = controls
+		self.controls.connect(self)
 		'connect to all the events we need'
 		self.cidpress = self.canvas.mpl_connect('button_press_event', 
 				self.on_press)
@@ -40,8 +43,6 @@ class DraggablePoint:
 				self.on_release)
 		self.cidmotion = self.canvas.mpl_connect('motion_notify_event', 
 				self.on_motion)
-		self.controls = controls
-		self.controls.connect(self)
 
 	def on_press(self, event):
 		if event.inaxes != self.point.axes: return
@@ -118,32 +119,29 @@ class DraggablePointControl(wx.Panel):
 		self.label = wx.StaticText(self, label=label+":")
 		self.xcoord = wx.TextCtrl(self)
 		self.ycoord = wx.TextCtrl(self)
-		self.button = wx.Button(self,label="Move point")
-		self.button.Bind(wx.EVT_BUTTON,self.move_marker)
-		
+
 		hbox = wx.BoxSizer(wx.HORIZONTAL)
 		hbox.Add(self.label,1,wx.LEFT|wx.CENTER)
 		hbox.Add(self.xcoord)
 		hbox.Add(wx.StaticText(parent,label=" , "))
 		hbox.Add(self.ycoord)
-		hbox.Add(self.button)
-
 		self.SetSizer(hbox)
 
 		self.update(point)
+		self.xcoord.Bind(wx.EVT_TEXT,self.move_marker)
+		self.ycoord.Bind(wx.EVT_TEXT,self.move_marker)
 		
 	def connect(self,marker):
 		self.marker = marker
 	
 	def update(self,xy):
-		self.xcoord.SetValue("%f" % xy[0])
-		self.ycoord.SetValue("%f" % xy[1])
+		self.xcoord.SetValue("%.2f" % xy[0])
+		self.ycoord.SetValue("%.2f" % xy[1])
 	
 	def getcoords(self):
 		return [float(self.xcoord.GetValue()),float(self.ycoord.GetValue())]
 
 	def move_marker(self,event):
-		print "Move",self.getcoords()
 		self.marker.move(self.getcoords())
 
 
@@ -178,6 +176,10 @@ class MRTControl(wx.Panel):
 		button_snap = wx.Button(self,label="Snap points")
 		button_snap.Bind(wx.EVT_BUTTON,self.snap_points)
 		vbox.Add(button_snap)
+
+		button_zoom = wx.Button(self,label="Close zoom")
+		button_zoom.Bind(wx.EVT_BUTTON,self.close_zoom)
+		vbox.Add(button_zoom)
 
 		self.SetAutoLayout(True)
 		self.SetSizer(vbox)
@@ -226,10 +228,8 @@ class MRTControl(wx.Panel):
 			ctrl.update(p_nearest)
 			ctrl.move_marker(None)
 
-		
-
-
-	
+	def close_zoom(self,event):
+		self.parent.plotpanel.close_zoom()
 
 
 class MRTPlot(wx.Panel):
@@ -247,6 +247,7 @@ class MRTPlot(wx.Panel):
 		self.fig, self.ax = plt.subplots()
 
 		self.canvas = FigureCanvasWxAgg(self, -1, self.fig)
+		self.canvas.mpl_connect('motion_notify_event', self.update_statusbar)
 		self.toolbar = Toolbar(self.canvas) #matplotlib toolbar
 		self.toolbar.Realize()
 
@@ -257,24 +258,40 @@ class MRTPlot(wx.Panel):
 		sizer.Add(self.toolbar, 0, wx.GROW)
 		self.SetSizer(sizer)
 		self.Fit()
+
+	def update_statusbar(self,event):
+		if event.xdata != None and event.ydata != None:
+			self.parent.statusbar.SetStatusText(
+					"Mouse coordinates:(%.2f, %.2f)" % 
+					(event.xdata,event.ydata))
 		
 	def load(self,event):
 		#Display image
 		self.ax.imshow(event.img)
+		self.close_zoom_x = event.xlim
+		self.close_zoom_y = event.ylim
+		self.ax.xaxis.tick_top()
 
 		#Plot start/end points
 		self.drags = []
 		colors = self.color_range(event.frames)
 		for pos, time, col in zip(event.positions, event.timestamps, colors):
+			if pos != event.positions[0] and pos != event.positions[-1]:
+				continue
 			circle = patches.Circle(pos, 10, fc=col, alpha=0.2)
 			self.ax.add_patch(circle)  
 			dr = DraggablePoint(circle)
 			time = datetime.utcfromtimestamp(time).strftime("t=%H:%M:%S.%f")
-			ctr = self.parent.controlpanel.new(pos,str(time),col)
+			ctr = self.parent.controlpanel.new(pos,str(time)[:-5],col)
 			dr.connect(ctr)
 			self.drags.append(dr)
 
 		self.parent.controlpanel.show()
+
+	def close_zoom(self):
+		self.ax.set_xlim(self.close_zoom_x)
+		self.ax.set_ylim(self.close_zoom_y) 
+		self.canvas.draw()
 
 	def color_range(self,num_colors):
 		colors=[]
@@ -286,7 +303,6 @@ class MRTPlot(wx.Panel):
 		return colors
 
 	def plot_linreg(self,x,y):
-
 		if len(self.line) > 0:
 			self.line.pop(0).remove()
 		self.line = self.ax.plot(x,y,'r')
@@ -300,8 +316,11 @@ class MRTFrame(wx.Frame):
 	def __init__(self):
 		wx.Frame.__init__(self,None,title="Manual Refine Track",
 				size=wx.Size(1200,800))
+
+		self.statusbar = wx.StatusBar(self)
 		self.controlpanel = MRTControl(self)
 		self.plotpanel = MRTPlot(self)
+		self.SetStatusBar(self.statusbar)
 
 		box = wx.BoxSizer(wx.HORIZONTAL)
 		box.Add(self.plotpanel, 4, wx.LEFT|wx.TOP|wx.GROW)
@@ -352,6 +371,15 @@ class EventData:
 		self.coordinates = self.str2tuple(fh.readline().split()[2:])
 		self.gnomonic	 = self.str2tuple(fh.readline().split()[2:])
 		fh.close()
+
+		#Calculate xlim/ylim of meteor track in image
+		x = [pos[0] for pos in self.positions]
+		dx = (max(x)-min(x))/0.5
+		y = [pos[1] for pos in self.positions]
+		dy = (max(y)-min(y))/0.5
+		self.xlim = [min(x)-dx,max(x)+dx]
+		self.ylim = [min(y)-dy,max(y)+dy]
+
 
 	def str2tuple(self,string_list):
 		tuples = []
